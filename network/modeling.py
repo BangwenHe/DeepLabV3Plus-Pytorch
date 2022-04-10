@@ -1,5 +1,6 @@
 from .utils import IntermediateLayerGetter
 from ._deeplab import DeepLabHead, DeepLabHeadV3Plus, DeepLabV3
+from ._gan import MeanDiscriminator
 from .backbone import resnet
 from .backbone import mobilenetv2
 from .backbone import hrnetv2
@@ -81,6 +82,35 @@ def _segm_mobilenet(name, backbone_name, num_classes, output_stride, pretrained_
     model = DeepLabV3(backbone, classifier)
     return model
 
+def _segm_gan_mobilenet(name, backbone_name, num_classes, output_stride, pretrained_backbone):
+    if output_stride==8:
+        aspp_dilate = [12, 24, 36]
+    else:
+        aspp_dilate = [6, 12, 18]
+
+    backbone = mobilenetv2.mobilenet_v2(pretrained=pretrained_backbone, output_stride=output_stride)
+    
+    # rename layers
+    backbone.low_level_features = backbone.features[0:4]
+    backbone.high_level_features = backbone.features[4:-1]
+    backbone.features = None
+    backbone.classifier = None
+
+    inplanes = 320
+    low_level_planes = 24
+    backbone.discriminator = MeanDiscriminator(in_channels=inplanes)
+    
+    if name=='deeplabv3plus':
+        return_layers = {'high_level_features': 'out', 'low_level_features': 'low_level', 'discriminator': 'discriminator'}
+        classifier = DeepLabHeadV3Plus(inplanes, low_level_planes, num_classes, aspp_dilate)
+    elif name=='deeplabv3':
+        return_layers = {'high_level_features': 'out', 'discriminator': 'discriminator'}
+        classifier = DeepLabHead(inplanes , num_classes, aspp_dilate)
+    backbone = IntermediateLayerGetter(backbone, return_layers=return_layers)
+
+    model = DeepLabV3(backbone, classifier)
+    return model
+
 def _load_model(arch_type, backbone, num_classes, output_stride, pretrained_backbone):
 
     if backbone=='mobilenetv2':
@@ -89,6 +119,8 @@ def _load_model(arch_type, backbone, num_classes, output_stride, pretrained_back
         model = _segm_resnet(arch_type, backbone, num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
     elif backbone.startswith('hrnetv2'):
         model = _segm_hrnet(arch_type, backbone, num_classes, pretrained_backbone=pretrained_backbone)
+    elif backbone.startswith('mobilenetv2') and backbone.endswith('gan'):
+        model = _segm_gan_mobilenet(arch_type, backbone, num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
     else:
         raise NotImplementedError
     return model
@@ -170,3 +202,6 @@ def deeplabv3plus_mobilenet(num_classes=21, output_stride=8, pretrained_backbone
         pretrained_backbone (bool): If True, use the pretrained backbone.
     """
     return _load_model('deeplabv3plus', 'mobilenetv2', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+
+def deeplabv3plus_mobilenet_gan(num_classes=2, output_stride=8, pretrained_backbone=True):
+    return _load_model('deeplabv3plus', 'mobilenetv2_gan', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)

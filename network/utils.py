@@ -15,7 +15,11 @@ class _SimpleSegmentationModel(nn.Module):
         features = self.backbone(x)
         x = self.classifier(features)
         x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-        return x
+
+        if 'discriminator' in features:
+            return x, features['discriminator']
+        else:
+            return x
 
 
 class IntermediateLayerGetter(nn.ModuleDict):

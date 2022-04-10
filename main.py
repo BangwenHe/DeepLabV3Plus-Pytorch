@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 
 from torch.utils import data
-from datasets import VOCSegmentation, Cityscapes
+from datasets import VOCSegmentation, Cityscapes, SelfMadeGANDataset
 from utils import ext_transforms as et
 from metrics import StreamSegMetrics
 
@@ -27,9 +27,11 @@ def get_argparser():
     parser.add_argument("--data_root", type=str, default='./datasets/data',
                         help="path to Dataset")
     parser.add_argument("--dataset", type=str, default='voc',
-                        choices=['voc', 'cityscapes'], help='Name of dataset')
+                        choices=['voc', 'cityscapes', 'self_made'], help='Name of dataset')
     parser.add_argument("--num_classes", type=int, default=None,
                         help="num classes (default: None)")
+    parser.add_argument("--num_train_workers", type=int, default=30, help="num workers for training")
+    parser.add_argument("--num_val_workers", type=int, default=30, help="num workers for validation")
 
     # Deeplab Options
     available_models = sorted(name for name in network.modeling.__dict__ if name.islower() and \
@@ -83,6 +85,10 @@ def get_argparser():
     # PASCAL VOC Options
     parser.add_argument("--year", type=str, default='2012',
                         choices=['2012_aug', '2012', '2011', '2009', '2008', '2007'], help='year of VOC')
+    
+    # Self-Made Dataset Options
+    parser.add_argument("--train_rgb_image_ratio", type=float, default=0.5, help='train rgb image ratio')
+    parser.add_argument("--val_rgb_image_ratio", type=float, default=0.5, help='test rgb image ratio')
 
     # Visdom options
     parser.add_argument("--enable_vis", action='store_true', default=False,
@@ -150,6 +156,44 @@ def get_dataset(opts):
                                split='train', transform=train_transform)
         val_dst = Cityscapes(root=opts.data_root,
                              split='val', transform=val_transform)
+    
+    if opts.dataset == 'self_made':
+        train_transform_image = et.ExtCompose([
+            et.ExtRandomCrop(size=(opts.crop_size, opts.crop_size)),
+            # et.ExtColorJitter(brightness=0.5, contrast=0.5, saturation=0.5),
+            # et.ExtRandomHorizontalFlip(),
+            et.ExtToTensor(),
+            et.ExtNormalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225]),
+        ])
+        train_transform_cdd = et.ExtCompose([
+            et.ExtRandomCrop(size=(opts.crop_size, opts.crop_size)),
+            et.ExtToTensor(),
+            et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+
+        val_transform_image = et.ExtCompose([
+            et.ExtToTensor(),
+            et.ExtNormalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225]),
+        ])
+        val_transform_cdd = et.ExtCompose([
+            et.ExtToTensor(),
+            et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+
+        train_dst = SelfMadeGANDataset(
+            root=opts.data_root,
+            split='train', 
+            transform_rgb=train_transform_image,
+            transform_cdd=train_transform_cdd,
+            rgb_ratio=opts.train_rgb_image_ratio,)
+        val_dst = SelfMadeGANDataset(
+            root=opts.data_root,
+            split='val', 
+            transform_rgb=val_transform_image,
+            transform_cdd=val_transform_cdd,
+            rgb_ratio=opts.val_rgb_image_ratio,)
     return train_dst, val_dst
 
 
@@ -168,10 +212,18 @@ def validate(opts, model, loader, device, metrics, ret_samples_ids=None):
         for i, (images, labels) in tqdm(enumerate(loader)):
 
             images = images.to(device, dtype=torch.float32)
-            labels = labels.to(device, dtype=torch.long)
+            if len(labels) == 1:
+                labels = labels.to(device, dtype=torch.long)
+            elif len(labels) == 2:
+                gan_labels = labels[1].to(device, dtype=torch.float32).reshape((-1, 1))
+                labels = labels[0].to(device, dtype=torch.long)
 
             outputs = model(images)
-            preds = outputs.detach().max(dim=1)[1].cpu().numpy()
+            if len(outputs) == 1:
+                preds = outputs.detach().max(dim=1)[1].cpu().numpy()
+            elif len(outputs) == 2:
+                preds = outputs[0].detach().max(dim=1)[1].cpu().numpy()
+                gan_preds = outputs[1].detach().max(dim=1)[1].cpu().numpy()
             targets = labels.cpu().numpy()
 
             metrics.update(targets, preds)
@@ -214,6 +266,8 @@ def main():
         opts.num_classes = 21
     elif opts.dataset.lower() == 'cityscapes':
         opts.num_classes = 19
+    elif opts.dataset.lower() == 'self_made':
+        opts.num_classes = 2
 
     # Setup visualization
     vis = Visualizer(port=opts.vis_port,
@@ -236,10 +290,10 @@ def main():
 
     train_dst, val_dst = get_dataset(opts)
     train_loader = data.DataLoader(
-        train_dst, batch_size=opts.batch_size, shuffle=True, num_workers=2,
+        train_dst, batch_size=opts.batch_size, shuffle=True, num_workers=opts.num_train_workers,
         drop_last=True)  # drop_last=True to ignore single-image batches.
     val_loader = data.DataLoader(
-        val_dst, batch_size=opts.val_batch_size, shuffle=True, num_workers=2)
+        val_dst, batch_size=opts.val_batch_size, shuffle=True, num_workers=opts.num_val_workers,)
     print("Dataset: %s, Train set: %d, Val set: %d" %
           (opts.dataset, len(train_dst), len(val_dst)))
 
@@ -328,11 +382,23 @@ def main():
             cur_itrs += 1
 
             images = images.to(device, dtype=torch.float32)
-            labels = labels.to(device, dtype=torch.long)
+
+            if len(labels) == 1:
+                labels = labels.to(device, dtype=torch.long)
+            elif len(labels) == 2:
+                gan_labels = labels[1].to(device, dtype=torch.float32).reshape((-1, 1))
+                labels = labels[0].to(device, dtype=torch.long)
 
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs, labels)
+
+            if len(outputs) == 1:
+                loss = criterion(outputs, labels)
+            elif len(outputs) == 2:
+                loss = criterion(outputs[0], labels)
+                gan_loss = nn.CrossEntropyLoss()(outputs[1], gan_labels)
+                loss += gan_loss
+
             loss.backward()
             optimizer.step()
 

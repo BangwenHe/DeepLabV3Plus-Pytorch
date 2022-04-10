@@ -188,3 +188,13 @@ def mobilenet_v2(pretrained=False, progress=True, **kwargs):
                                               progress=progress)
         model.load_state_dict(state_dict)
     return model
+
+
+if __name__ == "__main__":
+    model = mobilenet_v2(pretrained=True, output_stride=8)
+    print(model)
+
+    import torch
+    x = torch.randn(1, 3, 1024, 2048)
+    y = model(x)
+    print(y.shape)
