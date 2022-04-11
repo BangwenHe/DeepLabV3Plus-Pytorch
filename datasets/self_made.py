@@ -72,7 +72,21 @@ def load_cdd(cdd_filepath, image_width, image_height):
     # 区分横竖
     if image_height > image_width:
         image = image.transpose(1, 0, 2)
-    return image[0:image_height, 0:image_width]
+    image = image[0:image_height, 0:image_width]
+
+    mv_len = image[..., 0]
+    mv_angle = image[..., 1]
+    mb = image[..., 2]
+
+    # 着色
+    if np.max(mv_len) - np.min(mv_len) > 0:
+        image[..., 0] = (mv_len - np.min(mv_len)) / (np.max(mv_len) - np.min(mv_len)) * 255
+    image[..., 1] = (mv_angle - -180) / (180 - np.min(mv_angle)) * 255
+    image[..., 2] = (mb - 1) / (16 - np.min(mb)) * 255
+
+    # 翻转
+    image = np.flip(image, axis=1)
+    return image
 
 
 class SelfMadeGANDataset(data.Dataset):
@@ -81,7 +95,7 @@ class SelfMadeGANDataset(data.Dataset):
     RGB数据直接使用图像，压缩域信息使用txt文件
     """
     NUM_CLASSES = 2
-    cmap = voc_cmap(N=NUM_CLASSES, normalized=True)
+    cmap = voc_cmap(N=NUM_CLASSES)
     CityscapesClass = namedtuple('CityscapesClass', ['name', 'id', 'train_id', 'category', 'category_id',
                                                      'has_instances', 'ignore_in_eval', 'color'])
     classes = [
@@ -166,6 +180,11 @@ class SelfMadeGANDataset(data.Dataset):
         rgb_image = Image.open(rgb_image_path).convert('RGB')
         seg_label = Image.open(seg_label_path)
         cdd_image = Image.fromarray(load_cdd(cdd_path, rgb_image.width, rgb_image.height))
+
+        if __name__ == "__main__":
+            rgb_image.save(f"rgb_{idx}.png")
+            cdd_image.save(f"cdd_{idx}.png")
+            seg_label.save(f"seg_{idx}.png")
 
         if rgb_image.height > rgb_image.width:
             rgb_image = rgb_image.rotate(90, expand=True)

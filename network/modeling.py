@@ -1,6 +1,6 @@
 from .utils import IntermediateLayerGetter
 from ._deeplab import DeepLabHead, DeepLabHeadV3Plus, DeepLabV3
-from ._gan import MeanDiscriminator
+from ._gan import MeanDiscriminator, ConvDiscriminator
 from .backbone import resnet
 from .backbone import mobilenetv2
 from .backbone import hrnetv2
@@ -98,7 +98,7 @@ def _segm_gan_mobilenet(name, backbone_name, num_classes, output_stride, pretrai
 
     inplanes = 320
     low_level_planes = 24
-    backbone.discriminator = MeanDiscriminator(in_channels=inplanes)
+    backbone.discriminator = ConvDiscriminator(inplanes)
     
     if name=='deeplabv3plus':
         return_layers = {'high_level_features': 'out', 'low_level_features': 'low_level', 'discriminator': 'discriminator'}

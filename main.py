@@ -166,33 +166,33 @@ def get_dataset(opts):
             et.ExtNormalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
         ])
-        train_transform_cdd = et.ExtCompose([
-            et.ExtRandomCrop(size=(opts.crop_size, opts.crop_size)),
-            et.ExtToTensor(),
-            et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
+        # train_transform_cdd = et.ExtCompose([
+        #     et.ExtRandomCrop(size=(opts.crop_size, opts.crop_size)),
+        #     et.ExtToTensor(),
+        #     et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        # ])
 
         val_transform_image = et.ExtCompose([
             et.ExtToTensor(),
             et.ExtNormalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
         ])
-        val_transform_cdd = et.ExtCompose([
-            et.ExtToTensor(),
-            et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
+        # val_transform_cdd = et.ExtCompose([
+        #     et.ExtToTensor(),
+        #     et.ExtNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        # ])
 
         train_dst = SelfMadeGANDataset(
             root=opts.data_root,
             split='train', 
             transform_rgb=train_transform_image,
-            transform_cdd=train_transform_cdd,
+            # transform_cdd=train_transform_cdd,
             rgb_ratio=opts.train_rgb_image_ratio,)
         val_dst = SelfMadeGANDataset(
             root=opts.data_root,
             split='val', 
             transform_rgb=val_transform_image,
-            transform_cdd=val_transform_cdd,
+            # transform_cdd=val_transform_cdd,
             rgb_ratio=opts.val_rgb_image_ratio,)
     return train_dst, val_dst
 
@@ -395,8 +395,8 @@ def main():
             if len(outputs) == 1:
                 loss = criterion(outputs, labels)
             elif len(outputs) == 2:
-                loss = criterion(outputs[0], labels)
-                gan_loss = nn.CrossEntropyLoss()(outputs[1], gan_labels)
+                loss = criterion(outputs[0], labels) * 0.5
+                gan_loss = nn.BCELoss()(outputs[1], gan_labels) * 0.5
                 loss += gan_loss
 
             loss.backward()
@@ -406,6 +406,8 @@ def main():
             interval_loss += np_loss
             if vis is not None:
                 vis.vis_scalar('Loss', cur_itrs, np_loss)
+                if len(outputs) == 2:
+                    vis.vis_scalar('GAN Loss', cur_itrs, gan_loss.detach().cpu().numpy())
 
             if (cur_itrs) % 10 == 0:
                 interval_loss = interval_loss / 10
