@@ -176,22 +176,22 @@ class SelfMadeGANDataset(data.Dataset):
         if np.random.random() < self.rgb_ratio:
             if self.transform_rgb is not None:
                 rgb_image, seg_label = self.transform_rgb(rgb_image, seg_label)
-            target = self.encode_target(self, seg_label)
+            target = self.encode_target(seg_label)
             return rgb_image, (target, 0)
         else:
             if self.transform_cdd is not None:
                 cdd_image, seg_label = self.transform_cdd(cdd_image, seg_label)
-            target = self.encode_target(self, seg_label)
+            target = self.encode_target(seg_label)
             return cdd_image, (target, 1)
     
-    @staticmethod
+    @classmethod
     def encode_target(cls, target):
         """
         将cityscapes的格式转换为0(background)和1(person)
         """
         return cls.id_to_train_id[np.array(target)]
 
-    @staticmethod
+    @classmethod
     def decode_target(cls, target):
         return cls.cmap[np.array(target)]
 
