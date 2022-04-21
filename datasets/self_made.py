@@ -181,15 +181,15 @@ class SelfMadeGANDataset(data.Dataset):
         seg_label = Image.open(seg_label_path)
         cdd_image = Image.fromarray(load_cdd(cdd_path, rgb_image.width, rgb_image.height))
 
-        if __name__ == "__main__":
-            rgb_image.save(f"rgb_{idx}.png")
-            cdd_image.save(f"cdd_{idx}.png")
-            seg_label.save(f"seg_{idx}.png")
-
         if rgb_image.height > rgb_image.width:
             rgb_image = rgb_image.rotate(90, expand=True)
             cdd_image = cdd_image.rotate(90, expand=True)
             seg_label = seg_label.rotate(90, expand=True)
+
+        if __name__ == "__main__":
+            rgb_image.save(f"rgb_{idx}.png")
+            cdd_image.save(f"cdd_{idx}.png")
+            seg_label.save(f"seg_{idx}.png")
 
         # 选择RGB图像
         if np.random.random() < self.rgb_ratio:

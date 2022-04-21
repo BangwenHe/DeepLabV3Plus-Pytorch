@@ -100,15 +100,18 @@ class MobileNetV2(nn.Module):
         self.output_stride = output_stride
         current_stride = 1
         if inverted_residual_setting is None:
+            # 加载完所有的反转残差模块之后就是完整的mobilenetv2的特征提取层
+            # 最后面的ConvBNRELU是不需要的, 是为了全连接层的分类任务而设计的
             inverted_residual_setting = [
-                # t, c, n, s
-                [1, 16, 1, 1],
-                [6, 24, 2, 2],
-                [6, 32, 3, 2],
-                [6, 64, 4, 2],
-                [6, 96, 3, 1],
-                [6, 160, 3, 2],
-                [6, 320, 1, 1],
+                # expand_ratio, channel, num, stride
+                # t, c, n, s    1x3x513x513 -> 1x32x256x256
+                [1, 16, 1, 1],  # -> 1x16x256x256
+                [6, 24, 2, 2],  # -> 1x24x128x128
+                [6, 32, 3, 2],  # -> 1x32x64x64
+                [6, 64, 4, 2],  # -> 1x64x64x64
+                [6, 96, 3, 1],  # -> 1x96x64x64
+                [6, 160, 3, 2], # -> 1x160x64x64
+                [6, 320, 1, 1], # -> 1x320x64x64
             ]
 
         # only check the first element, assuming user knows t,c,n,s are required
@@ -192,9 +195,9 @@ def mobilenet_v2(pretrained=False, progress=True, **kwargs):
 
 if __name__ == "__main__":
     model = mobilenet_v2(pretrained=True, output_stride=8)
-    print(model)
+    # print(model)
 
     import torch
-    x = torch.randn(1, 3, 1024, 2048)
+    x = torch.randn(1, 3, 513, 513)
     y = model(x)
     print(y.shape)

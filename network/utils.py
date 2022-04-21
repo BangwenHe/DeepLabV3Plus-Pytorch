@@ -22,6 +22,32 @@ class _SimpleSegmentationModel(nn.Module):
             return x
 
 
+class _DeeplabV3PlusBranch(nn.Module):
+    def __init__(self, classifier, output_shape):
+        super(_DeeplabV3PlusBranch, self).__init__()
+        self.classifier = classifier
+        self.output_shape = output_shape
+    
+    def forward(self, x):
+        features = self.classifier(x)
+        x = F.interpolate(features, size=self.output_shape, mode='bilinear', align_corners=False)
+        return x
+
+
+class _MultiBranchModel(nn.Module):
+    def __init__(self, backbone, branches: OrderedDict) -> None:
+        super().__init__()
+        self.backbone = backbone
+        self.branches = nn.ModuleDict(branches)
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        outputs = {'features': features}
+        for key in self.branches:
+            outputs[key] = self.branches[key](features)
+        return outputs
+
+
 class IntermediateLayerGetter(nn.ModuleDict):
     """
     Module wrapper that returns intermediate layers from a model
